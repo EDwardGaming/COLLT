@@ -1,30 +1,20 @@
-# COLLT: Chinese Online Legal Consultation with Tool-augmented Large Language Models
+# COLLT: AMulti-Task Optimization Framework for Clarification-Oriented Tool Learning in Legal Large Language Models
 
-> **SCI Q1 · Data & Code Repository**
+> **Data & Code Repository**
 >
-> This repository releases all datasets, annotation artifacts, and training/evaluation code
-> accompanying the manuscript *"COLLT: Clarification-Oriented Legal Language with Tool
-> augmentation"* (under review).
+> This repository releases all datasets, annotation artifacts, and training/evaluation code accompanying the manuscript *"COLLT: AMulti-Task Optimization Framework for Clarification-Oriented Tool Learning in Legal Large Language Models"* (under review).
 
 ---
 
 ## Overview
 
-COLLT addresses the challenge of **ambiguous legal consultations** in Chinese online legal
-services. Users frequently pose under-specified questions that require clarification before
-a well-grounded legal answer can be given. Our framework equips large language models with:
+COLLT addresses the challenge of **ambiguous legal consultations** in Chinese online legal services. Users frequently pose under-specified questions that require clarification beforea well-grounded legal answer can be given. Our framework equips large language models with:
 
-1. **Clarification ability** — the model decides when to ask the user for missing information
-   (`<CLR>` action token) vs. when to respond directly (`<DRT>` action token).
-2. **Six legal tools** — specialized Lawformer-based modules for statute retrieval (T_LAS),
-   charge prediction (T_LCP), similar-case retrieval (T_SCR), element recognition (T_LER),
-   event detection (T_LED), and internet search (T_NET).
-3. **Budgeted tool invocation** — at most |τ| ≤ 2 tool calls per turn (Proposition 1),
-   preventing over-retrieval while keeping latency acceptable.
+1. **Clarification ability** 
+2. **Six legal tools** 
+3. **Budgeted tool invocation** 
 
-Five base LLMs are fine-tuned via 4-bit QLoRA (unsloth): ChatGLM3-6B, LLaMa-3-8B,
-InternLM3-8B, Qwen2.5-7B, and Baichuan2-7B, yielding the **COLLT-GLM / -LLaMa /
--InternLM / -Qwen / -Baichuan** model series.
+Five base LLMs are fine-tuned via 4-bit QLoRA (unsloth): ChatGLM3-6B, LLaMa-3-8B,InternLM3-8B, Qwen2.5-7B, and Baichuan2-7B, yielding the **COLLT-GLM / -LLaMa /-InternLM / -Qwen / -Baichuan** model series.
 
 ---
 
@@ -52,8 +42,7 @@ COLLT/
 
 ## Dataset
 
-All files reside in `DATASET/COLLT_DATASET/`.  The table below lists every dataset
-artefact used across the paper's experiments and ablations.
+All files reside in `DATASET/COLLT_DATASET/`.  The table below lists every dataset artefact used across the paper's experiments and ablations.
 
 ### COLLT Core Pipeline (§3)
 
@@ -63,7 +52,8 @@ artefact used across the paper's experiments and ablations.
 | `annot_ambig.jsonl` | 11,533 | Ambiguity annotation of every seed, generated via the DeepSeek-based pipeline (§3.1.2). For each seed records `need_clarification` (bool), the number of clarification turns, annotated clarification dialogue, and the expanded final query after user supplements. | §3.1.2, AmbigLegalQA construction |
 | `annot_tool.jsonl` | 11,528 | Tool-usage annotation for each seed (§3.1.3). Records which of the six tools were selected and their ground-truth outputs (`tool_outputs`), plus the `<DRT>…<ER>…` enhanced response. | §3.1.3, COLLT-SFT construction |
 | `collt_sft.jsonl` | 11,528 | **COLLT SFT training corpus.** Multi-turn dialogue in OpenAI message format. Assistant turns embed the full protocol: `<CLR>` or `<DRT>` action token, tool head/tail tags with real retrieval outputs, and the `<ER>`-gated enhanced response. Directly used as supervised signal (Equation 12). | `train_collt_sft.py`, Stage 2 |
-| `ambiglegalqa.jsonl` | 5,181 | **AmbigLegalQA evaluation benchmark** (§3.2 / §4.2). A held-out subset covering the full ambiguity spectrum (0–4 clarification turns). Each record has `question`, `gold_clarification_turns`, `gold_clarification_assistant`, `gold_supplements`, and `gold_final_response`. Used for trigger-F1, coverage, and ROUGE-L evaluation. | `eval_ambiglegalqa.py`, `eval_ablation_clarify.py` |
+| `ambiglegalqa.jsonl` | 5,181 | **AmbigLegalQA evaluation benchmark** (§3.2 / §4.2). A held-out subset covering the full ambiguity spectrum (0–4 clarification turns). Each record has `question`, `gold_clarification_turns`, `gold_clarification_assistant`, `gold_supplements`, and `gold_final_response`. Used for trigger-F1, coverage, and ROUGE-L evaluation. | `eval_ablation_clarify.py` |
+| `hualv.jsonl` | 500 | 500 Real-World Legal Advice. | `eval_ambiglegalqa.py` |
 
 ### Legal Tool Training Data (§4.1)
 
@@ -77,17 +67,17 @@ artefact used across the paper's experiments and ablations.
 
 ### External Datasets Referenced in the Paper
 
-The following publicly available datasets are required to reproduce all experiments but are
-**not bundled** in this repository due to size or licence constraints. Download links and
-local placement are documented in `download_all.py` / `CLAUDE.md`.
+The following publicly available datasets are required to reproduce all experiments but are **not bundled** in this repository due to size or licence constraints. Download links and local placement are documented in `download_all.py` / `CLAUDE.md`.
 
 | Dataset | Size | Tool / Task | Source |
 |---------|------|-------------|--------|
 | **DISC-Law-SFT** | ~295 K SFT samples | Seeds & tool training | [HuggingFace: ShengbinWang/DISC-Law-SFT](https://huggingface.co/datasets/ShengbinWang/DISC-Law-SFT) |
-| **LawBench** | 9 zero-shot tasks | Table 3 evaluation | [GitHub: open-compass/LawBench](https://github.com/open-compass/LawBench) — tasks 3-3 (LCP), 3-1 (LAP), 3-4 (PTP), 2-8 (AM), 2-2 (DFI), 2-4 (ITI), 2-9 (LED), 2-7 (OS), 3-6 (CA) |
-| **CAIL2019-SCM** | ~16 K case pairs | T_SCR training | [china-ai-law-challenge/CAIL2019](https://github.com/china-ai-law-challenge/CAIL2019) — `相似案例匹配/` split |
-| **LEVEN** | 5,301 train + 1,230 valid docs | T_LED training | [HuggingFace: daishen/LEVEN](https://huggingface.co/datasets/daishen/LEVEN) |
+| **LawBench** | 9 zero-shot tasks | Table 3 evaluation | [GitHub: open-compass/LawBench](https://github.com/open-compass/LawBench) |
+| **CAIL2019-SCM** | ~16 K case pairs | T_SCR training | [china-ai-law-challenge/CAIL2019](https://github.com/china-ai-law-challenge/CAIL2019) |
+| **LEVEN** | 5,301 train + 1,230 valid docs | T_LED training | daishen/LEVEN |
 | **CAIL2019 element-extraction** | ~91 K sentences | T_LER training (auto-downloaded) | `HuiResearch/cail2019_track2` via `tools/build_ler_data.py` |
+
+
 
 ---
 
@@ -105,10 +95,7 @@ annot_tool.jsonl ──► collt_sft.jsonl       ambiglegalqa.jsonl
                       (SFT corpus)          (evaluation benchmark)
 ```
 
-`collt_sft.jsonl` is directly consumed by `train_collt_sft.py` to fine-tune each of
-the five COLLT-* models.  `ambiglegalqa.jsonl` is the held-out benchmark shared across
-`eval_ambiglegalqa.py` (§4.2), `eval_ablation_clarify.py` (R3#8 ablation), and the
-clarification-turn analysis in the appendix.
+`collt_sft.jsonl` is directly consumed by `train_collt_sft.py` to fine-tune each of the five COLLT-* models. `ambiglegalqa.jsonl` is the held-out benchmark shared across `eval_ambiglegalqa.py` (§4.2), `eval_ablation_clarify.py` (R3#8 ablation), and the clarification-turn analysis in the appendix.
 
 ---
 
@@ -149,7 +136,7 @@ Evaluates all COLLT-* models and baselines on 9 zero-shot LawBench tasks.
 Script: `eval_table3.py`  
 Three modes: `collt` (COLLT SFT), `baseline_tools` (base LLM + tool system-prompt, R3#2 fairness), `baseline_plain` (bare zero-shot).
 
-### AmbigLegalQA Objective Evaluation (§4.2 / R2#3)
+### AmbigLegalQA Objective Evaluation
 
 Data: `DATASET/COLLT_DATASET/ambiglegalqa.jsonl` (5,181 records)  
 Script: `eval_ambiglegalqa.py`  
@@ -158,7 +145,7 @@ Metrics:
 - **Clarification Coverage** — fraction of gold clarification key-phrases present in model output
 - **Multi-turn ROUGE-L** — final `<ER>`-response vs. `gold_final_response`
 
-### Tool Ablation (R3#7)
+### Tool Ablation
 
 Data: LawBench tasks (subset: LCP, LAP, DFI, ITI, LED, OS, CA)  
 Script: `eval_ablation_tools.py`  
@@ -169,13 +156,14 @@ Eight configurations: `none` (all tools on), six leave-one-out (−SCR, −LAS, 
 Data: `DATASET/COLLT_DATASET/ambiglegalqa.jsonl`  
 Script: `eval_ablation_clarify.py`  
 Three-way comparison:
+
 - **(a) base_vanilla** — bare base LLM, no system prompt, no tools
 - **(b) base_with_clarify** — base LLM + clarify-first system prompt + tool access
 - **(c) collt_sft** — COLLT-* fine-tuned model
 
 ---
 
-## Base Models (Table 3, Stage 2)
+## Base Models 
 
 | Short name | HuggingFace ID | Parameters |
 |------------|----------------|-----------|
@@ -213,19 +201,6 @@ python -m train.train_all --limit 200
 ```
 
 Append `--limit N` to any script to truncate datasets for quick sanity checks.
-
----
-
-## Citation
-
-```bibtex
-@article{collt2025,
-  title  = {COLLT: Clarification-Oriented Legal Language with Tool Augmentation},
-  author = {Yang Kaixin et al.},
-  year   = {2025},
-  note   = {Manuscript under review}
-}
-```
 
 ---
 
