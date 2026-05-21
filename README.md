@@ -1,2 +1,237 @@
-# COLLT
-A Multi-Task Optimization Framework for Clarification-Oriented Tool Learning in Legal Large Language Models.
+# COLLT: Chinese Online Legal Consultation with Tool-augmented Large Language Models
+
+> **SCI Q1 · Data & Code Repository**
+>
+> This repository releases all datasets, annotation artifacts, and training/evaluation code
+> accompanying the manuscript *"COLLT: Clarification-Oriented Legal Language with Tool
+> augmentation"* (under review).
+
+---
+
+## Overview
+
+COLLT addresses the challenge of **ambiguous legal consultations** in Chinese online legal
+services. Users frequently pose under-specified questions that require clarification before
+a well-grounded legal answer can be given. Our framework equips large language models with:
+
+1. **Clarification ability** — the model decides when to ask the user for missing information
+   (`<CLR>` action token) vs. when to respond directly (`<DRT>` action token).
+2. **Six legal tools** — specialized Lawformer-based modules for statute retrieval (T_LAS),
+   charge prediction (T_LCP), similar-case retrieval (T_SCR), element recognition (T_LER),
+   event detection (T_LED), and internet search (T_NET).
+3. **Budgeted tool invocation** — at most |τ| ≤ 2 tool calls per turn (Proposition 1),
+   preventing over-retrieval while keeping latency acceptable.
+
+Five base LLMs are fine-tuned via 4-bit QLoRA (unsloth): ChatGLM3-6B, LLaMa-3-8B,
+InternLM3-8B, Qwen2.5-7B, and Baichuan2-7B, yielding the **COLLT-GLM / -LLaMa /
+-InternLM / -Qwen / -Baichuan** model series.
+
+---
+
+## Repository Layout
+
+```
+COLLT/
+├── DATASET/
+│   └── COLLT_DATASET/          ← all released dataset files (see §Dataset)
+├── tools/                      ← six legal-tool training scripts + backbone
+├── common.py                   ← shared constants, paths, JSONL helpers
+├── data_collt.py               ← collt_sft.jsonl → HuggingFace Dataset
+├── inference_collt.py          ← streaming inference (Algorithm 1)
+├── train_collt_sft.py          ← COLLT-* QLoRA SFT
+├── train_all.py                ← end-to-end orchestrator
+├── eval_table3.py              ← Table 3 (9 LawBench tasks)
+├── eval_ambiglegalqa.py        ← AmbigLegalQA objective metrics (R2#3)
+├── eval_ablation_tools.py      ← tool ablation, 8 configs (R3#7)
+├── eval_ablation_clarify.py    ← clarification ablation, 3-way (R3#8)
+├── download_all.py             ← downloads base models + DISC-Law-SFT
+└── requirements_train.txt
+```
+
+---
+
+## Dataset
+
+All files reside in `DATASET/COLLT_DATASET/`.  The table below lists every dataset
+artefact used across the paper's experiments and ablations.
+
+### COLLT Core Pipeline (§3)
+
+| File | Records | Description | Used in |
+|------|--------:|-------------|---------|
+| `seeds.jsonl` | 11,533 | Raw legal consultation seeds sourced from the `legal_question_answering` subset of DISC-Law-SFT. Each seed is a real question posted on Chinese legal platforms (华律网, 律图, 法律快车, etc.). Fields: `id`, `source_id`, `question`, `meta`. | Data-build pipeline |
+| `annot_ambig.jsonl` | 11,533 | Ambiguity annotation of every seed, generated via the DeepSeek-based pipeline (§3.1.2). For each seed records `need_clarification` (bool), the number of clarification turns, annotated clarification dialogue, and the expanded final query after user supplements. | §3.1.2, AmbigLegalQA construction |
+| `annot_tool.jsonl` | 11,528 | Tool-usage annotation for each seed (§3.1.3). Records which of the six tools were selected and their ground-truth outputs (`tool_outputs`), plus the `<DRT>…<ER>…` enhanced response. | §3.1.3, COLLT-SFT construction |
+| `collt_sft.jsonl` | 11,528 | **COLLT SFT training corpus.** Multi-turn dialogue in OpenAI message format. Assistant turns embed the full protocol: `<CLR>` or `<DRT>` action token, tool head/tail tags with real retrieval outputs, and the `<ER>`-gated enhanced response. Directly used as supervised signal (Equation 12). | `train_collt_sft.py`, Stage 2 |
+| `ambiglegalqa.jsonl` | 5,181 | **AmbigLegalQA evaluation benchmark** (§3.2 / §4.2). A held-out subset covering the full ambiguity spectrum (0–4 clarification turns). Each record has `question`, `gold_clarification_turns`, `gold_clarification_assistant`, `gold_supplements`, and `gold_final_response`. Used for trigger-F1, coverage, and ROUGE-L evaluation. | `eval_ambiglegalqa.py`, `eval_ablation_clarify.py` |
+
+### Legal Tool Training Data (§4.1)
+
+| File | Records | Tool | Description |
+|------|--------:|------|-------------|
+| `tlas_train.jsonl` | 18,411 | **T_LAS** (Legal Article Search) | Derived from DISC-Law-SFT `judgement_pred` / `exam` / `reading_compre` subsets. Fields: `fact` (case text), `label` (primary statute article, e.g. `刑法#114`), `all_labels`. CAIL2018 `src_id`s are excluded to prevent leakage against LawBench 3-1/3-3/3-4 (R3#1 fix). |
+| `tlcp_train.jsonl` | 24,021 | **T_LCP** (Legal Charge Prediction) | Derived from DISC-Law-SFT `sent_pred` / `judgement_pred` / `case_class`. Fields: `fact`, `charges` (list of criminal charges, e.g. `["盗窃罪"]`). Same CAIL2018 non-overlap guarantee as T_LAS. |
+| `tler_train.jsonl` | 68,850 sentences | **T_LER** (Legal Element Recognition) | Sentence-level multi-label annotations from CAIL2019 element-extraction (divorce domain DV1–DV20, labor LB1–LB20, loan LN1–LN20). Fields: `sentence`, `labels`, `domain`. Generated by `tools/build_ler_data.py`. |
+| `tler_valid.jsonl` | 22,491 sentences | **T_LER** validation | Held-out split of the CAIL2019 element-extraction data, same schema as train. |
+| `tler_label_names.json` | 62 labels | **T_LER** label map | JSON mapping label codes (e.g. `DV1`) to human-readable Chinese element names. |
+
+### External Datasets Referenced in the Paper
+
+The following publicly available datasets are required to reproduce all experiments but are
+**not bundled** in this repository due to size or licence constraints. Download links and
+local placement are documented in `download_all.py` / `CLAUDE.md`.
+
+| Dataset | Size | Tool / Task | Source |
+|---------|------|-------------|--------|
+| **DISC-Law-SFT** | ~295 K SFT samples | Seeds & tool training | [HuggingFace: ShengbinWang/DISC-Law-SFT](https://huggingface.co/datasets/ShengbinWang/DISC-Law-SFT) |
+| **LawBench** | 9 zero-shot tasks | Table 3 evaluation | [GitHub: open-compass/LawBench](https://github.com/open-compass/LawBench) — tasks 3-3 (LCP), 3-1 (LAP), 3-4 (PTP), 2-8 (AM), 2-2 (DFI), 2-4 (ITI), 2-9 (LED), 2-7 (OS), 3-6 (CA) |
+| **CAIL2019-SCM** | ~16 K case pairs | T_SCR training | [china-ai-law-challenge/CAIL2019](https://github.com/china-ai-law-challenge/CAIL2019) — `相似案例匹配/` split |
+| **LEVEN** | 5,301 train + 1,230 valid docs | T_LED training | [HuggingFace: daishen/LEVEN](https://huggingface.co/datasets/daishen/LEVEN) |
+| **CAIL2019 element-extraction** | ~91 K sentences | T_LER training (auto-downloaded) | `HuiResearch/cail2019_track2` via `tools/build_ler_data.py` |
+
+---
+
+## Data Construction Pipeline
+
+```
+DISC-Law-SFT (legal_question_answering)
+        │
+        ▼  DeepSeek-based annotation  (§3.1.2)
+seeds.jsonl ──────────────────────────────► annot_ambig.jsonl
+        │                                         │
+        │  Tool annotation  (§3.1.3)              │ (5,181 held-out)
+        ▼                                         ▼
+annot_tool.jsonl ──► collt_sft.jsonl       ambiglegalqa.jsonl
+                      (SFT corpus)          (evaluation benchmark)
+```
+
+`collt_sft.jsonl` is directly consumed by `train_collt_sft.py` to fine-tune each of
+the five COLLT-* models.  `ambiglegalqa.jsonl` is the held-out benchmark shared across
+`eval_ambiglegalqa.py` (§4.2), `eval_ablation_clarify.py` (R3#8 ablation), and the
+clarification-turn analysis in the appendix.
+
+---
+
+## Special Tokens (Table 1)
+
+| Token | Type | Semantics |
+|-------|------|-----------|
+| `<CLR>` | Action (open-only) | Clarification action — model asks follow-up questions |
+| `<DRT>` | Action (open-only) | Direct-response action — model proceeds with tools |
+| `<SCR></SCR>` | Tool (paired) | Similar Case Retrieval |
+| `<LAS></LAS>` | Tool (paired) | Legal Article Search |
+| `<LCP></LCP>` | Tool (paired) | Legal Charge Prediction |
+| `<LER></LER>` | Tool (paired) | Legal Element Recognition |
+| `<LED></LED>` | Tool (paired) | Legal Event Detection |
+| `<NET></NET>` | Tool (paired) | Internet Search (Bing API) |
+| `<ER>` | Delimiter (open-only) | Marks start of the tool-enhanced final response |
+
+---
+
+## Experiments and Corresponding Code / Data
+
+### Table 3 — 9 Traditional Legal-NLP Tasks
+
+Evaluates all COLLT-* models and baselines on 9 zero-shot LawBench tasks.
+
+| Task | LawBench ID | Metric | Data file |
+|------|-------------|--------|-----------|
+| Legal Charge Prediction (LCP) | 3-3 | Micro-F1 | LawBench `zero_shot/3-3.json` |
+| Legal Article Prediction (LAP) | 3-1 | Micro-F1 | LawBench `zero_shot/3-1.json` |
+| Prison Term Prediction (PTP) | 3-4 | Log-distance | LawBench `zero_shot/3-4.json` |
+| Argument Mining (AM) | 2-8 | Accuracy | LawBench `zero_shot/2-8.json` |
+| Dispute Focus Identification (DFI) | 2-2 | Micro-F1 | LawBench `zero_shot/2-2.json` |
+| Issue Topic Identification (ITI) | 2-4 | Accuracy | LawBench `zero_shot/2-4.json` |
+| Legal Event Detection (LED) | 2-9 | Micro-F1 | LawBench `zero_shot/2-9.json` |
+| Opinion Summarization (OS) | 2-7 | ROUGE-L | LawBench `zero_shot/2-7.json` |
+| Case Analysis (CA) | 3-6 | Accuracy | LawBench `zero_shot/3-6.json` |
+
+Script: `eval_table3.py`  
+Three modes: `collt` (COLLT SFT), `baseline_tools` (base LLM + tool system-prompt, R3#2 fairness), `baseline_plain` (bare zero-shot).
+
+### AmbigLegalQA Objective Evaluation (§4.2 / R2#3)
+
+Data: `DATASET/COLLT_DATASET/ambiglegalqa.jsonl` (5,181 records)  
+Script: `eval_ambiglegalqa.py`  
+Metrics:
+- **Trigger-F1** — whether `<CLR>` is emitted exactly when gold requires clarification
+- **Clarification Coverage** — fraction of gold clarification key-phrases present in model output
+- **Multi-turn ROUGE-L** — final `<ER>`-response vs. `gold_final_response`
+
+### Tool Ablation (R3#7)
+
+Data: LawBench tasks (subset: LCP, LAP, DFI, ITI, LED, OS, CA)  
+Script: `eval_ablation_tools.py`  
+Eight configurations: `none` (all tools on), six leave-one-out (−SCR, −LAS, −LCP, −LER, −LED, −NET), and `ALL` (all tools off, clarification only).
+
+### Clarification Ablation (R3#8)
+
+Data: `DATASET/COLLT_DATASET/ambiglegalqa.jsonl`  
+Script: `eval_ablation_clarify.py`  
+Three-way comparison:
+- **(a) base_vanilla** — bare base LLM, no system prompt, no tools
+- **(b) base_with_clarify** — base LLM + clarify-first system prompt + tool access
+- **(c) collt_sft** — COLLT-* fine-tuned model
+
+---
+
+## Base Models (Table 3, Stage 2)
+
+| Short name | HuggingFace ID | Parameters |
+|------------|----------------|-----------|
+| `glm` | `THUDM/chatglm3-6b` | 6B |
+| `llama` | `meta-llama/Meta-Llama-3-8B-Instruct` | 8B |
+| `internlm` | `internlm/internlm3-8b-instruct` | 8B |
+| `qwen` | `Qwen/Qwen2.5-7B-Instruct` | 7B |
+| `baichuan` | `baichuan-inc/Baichuan2-7B-Chat` | 7B |
+
+All fine-tuned with 4-bit QLoRA (r=16, α=32) + gradient checkpointing on a single
+NVIDIA RTX 4090 24 GB.  Lawformer tools (~110 M parameters) are trained in full
+precision (bf16/fp16) on the same GPU.
+
+---
+
+## Quick Start
+
+```bash
+pip install -r requirements_train.txt
+
+# Download base models and DISC-Law-SFT (Linux preferred)
+python download_all.py   # or: bash download_all.sh
+
+# Stage 1 — train six legal tools
+python -m train.train_all --only tools
+
+# Stage 2 — fine-tune COLLT-Qwen
+python -m train.train_all --only collt --models qwen
+
+# Stage 3 — run all evaluations
+python -m train.train_all --only eval --models qwen
+
+# Smoke-test everything on 200 samples
+python -m train.train_all --limit 200
+```
+
+Append `--limit N` to any script to truncate datasets for quick sanity checks.
+
+---
+
+## Citation
+
+```bibtex
+@article{collt2025,
+  title  = {COLLT: Clarification-Oriented Legal Language with Tool Augmentation},
+  author = {Yang Kaixin et al.},
+  year   = {2025},
+  note   = {Manuscript under review}
+}
+```
+
+---
+
+## License
+
+The **code** in this repository is released under the MIT License.  
+The **dataset files** in `DATASET/COLLT_DATASET/` are released under
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) (non-commercial research
+only), consistent with the upstream DISC-Law-SFT and CAIL2019 data licences.

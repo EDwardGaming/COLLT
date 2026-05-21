@@ -1,0 +1,34 @@
+# COLLT training + tool fine-tuning + evaluation
+# (separate from the data-build requirements in ../requirements.txt)
+
+# Core stack
+torch>=2.3.0
+transformers>=4.43.0
+datasets>=2.20.0
+accelerate>=0.32.0
+peft>=0.12.0
+
+# Unsloth fast LoRA / QLoRA (https://github.com/unslothai/unsloth)
+unsloth>=2024.8
+trl>=0.9.0
+bitsandbytes>=0.43.0
+
+# Lawformer + tokenization helpers
+sentencepiece>=0.2.0
+protobuf>=3.20
+
+# Eval metrics
+scikit-learn>=1.4.0
+numpy>=1.26.0
+
+# IO
+orjson>=3.10.0
+tqdm>=4.66.0
+
+# 下载脚本依赖(download_all.sh / download_all.py)
+huggingface_hub>=0.24.0
+hf_transfer>=0.1.6
+
+# Optional — LawBench has its own requirements; install separately if used:
+#   git clone https://github.com/open-compass/LawBench
+#   pip install -r LawBench/requirements.txt
