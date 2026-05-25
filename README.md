@@ -53,7 +53,7 @@ All files reside in `DATASET/COLLT_DATASET/`.  The table below lists every datas
 | `annot_tool.jsonl` | 11,528 | Tool-usage annotation for each seed (§3.1.3). Records which of the six tools were selected and their ground-truth outputs (`tool_outputs`), plus the `<DRT>…<ER>…` enhanced response. | §3.1.3, COLLT-SFT construction |
 | `collt_sft.jsonl` | 11,528 | **COLLT SFT training corpus.** Multi-turn dialogue in OpenAI message format. Assistant turns embed the full protocol: `<CLR>` or `<DRT>` action token, tool head/tail tags with real retrieval outputs, and the `<ER>`-gated enhanced response. Directly used as supervised signal (Equation 12). | `train_collt_sft.py` |
 | `ambiglegalqa.jsonl` | 5,181 | **AmbigLegalQA evaluation benchmark** (§3.2 / §4.2). A held-out subset covering the full ambiguity spectrum (0–4 clarification turns). Each record has `question`, `gold_clarification_turns`, `gold_clarification_assistant`, `gold_supplements`, and `gold_final_response`. Used for trigger-F1, coverage, and ROUGE-L evaluation. | `eval_ambiglegalqa.py` |
-| `law66_annot.jsonl` | 500 | 500 Real-World Legal Advice.Each is a real question with corresponding URL posted on Chinese legal platforms.(华律网, 律图, 法律快车, etc.). | `eval_ablation_clarify.py` |
+| `law66_annot.jsonl` | 500 | 500 Real-World Legal Advice.Each is a real question with corresponding URL posted on Chinese legal platforms.(华律网, 律图, 法律快车). | `eval_ablation_clarify.py` |
 
 ### Legal Tool Training Data (§4.1)
 
